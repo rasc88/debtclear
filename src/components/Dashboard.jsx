@@ -3,6 +3,7 @@ import useDebtStore from '../store/useDebtStore'
 import { simulate } from '../engine/simulate'
 import { formatCurrency, formatDate } from '../engine/formatters'
 import BalanceChart from './BalanceChart'
+import DebtSliders from './DebtSliders'
 import LoanModule from './LoanModule'
 import ComparisonPanel from './ComparisonPanel'
 import ExcelExport from './ExcelExport'
@@ -41,19 +42,17 @@ export default function Dashboard({ onBack }) {
   const attackOrder = useDebtStore((s) => s.attackOrder)
   const loanConfig = useDebtStore((s) => s.loanConfig)
 
-  // Always run both scenarios; display active one in summary, both in comparison
   const resultWithout = useMemo(
     () => simulate(debts, attackOrder, null),
-    [debts, attackOrder]
+    [debts, attackOrder],
   )
   const resultWith = useMemo(
     () => simulate(debts, attackOrder, loanConfig),
-    [debts, attackOrder, loanConfig]
+    [debts, attackOrder, loanConfig],
   )
 
   const result = loanConfig.enabled ? resultWith : resultWithout
 
-  // Approximate per-debt interest from timeline
   const perDebtInterest = useMemo(() => {
     const acc = {}
     debts.forEach((d) => { acc[d.id] = 0 })
@@ -71,8 +70,9 @@ export default function Dashboard({ onBack }) {
     .filter(Boolean)
 
   return (
-    <div className="py-8 px-4">
-      <div className="flex items-center justify-between mb-6">
+    <div className="py-6 px-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
           <button onClick={onBack} className="text-sm text-gray-400 hover:text-gray-600 mb-1 flex items-center gap-1">
             ← Edit debts
@@ -82,8 +82,11 @@ export default function Dashboard({ onBack }) {
         <ExcelExport />
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+      {/* ── Interactive controls ── */}
+      <DebtSliders debts={debts} attackOrder={attackOrder} />
+
+      {/* ── Summary cards ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <StatCard
           label="Debt-free date"
           value={formatDate(result.totalMonths)}
@@ -101,19 +104,19 @@ export default function Dashboard({ onBack }) {
         />
       </div>
 
-      {/* Balance evolution chart */}
+      {/* ── Balance chart ── */}
       <BalanceChart timeline={result.timeline} debts={orderedDebts} />
 
-      {/* Personal loan module */}
+      {/* ── Personal loan module ── */}
       <LoanModule />
 
-      {/* Comparison panel — only when loan is enabled */}
+      {/* ── Comparison panel ── */}
       {loanConfig.enabled && (
         <ComparisonPanel without={resultWithout} with={resultWith} />
       )}
 
-      {/* Per-debt breakdown */}
-      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm mb-4">
+      {/* ── Per-debt breakdown ── */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
         <h3 className="text-sm font-semibold text-gray-700 mb-2">Payoff breakdown</h3>
         {orderedDebts.map((debt) => (
           <DebtResultRow
@@ -122,14 +125,6 @@ export default function Dashboard({ onBack }) {
             payoffMonth={result.debtPayoffMonths[debt.id] ?? result.totalMonths}
             interest={perDebtInterest[debt.id] ?? 0}
           />
-        ))}
-      </div>
-
-      {/* Attack order reminder */}
-      <div className="bg-indigo-50 rounded-xl px-4 py-3 text-xs text-indigo-700">
-        <strong>Attack order: </strong>
-        {orderedDebts.map((d, i) => (
-          <span key={d.id}>{i > 0 && ' → '}{d.name}</span>
         ))}
       </div>
     </div>
