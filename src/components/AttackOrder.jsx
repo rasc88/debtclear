@@ -25,7 +25,7 @@ export default function AttackOrder({ onContinue, onBack }) {
   }, [debts, setAttackOrder])
 
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
+    <div className="py-8 px-4">
       <button onClick={onBack} className="text-sm text-gray-400 hover:text-gray-600 mb-4 flex items-center gap-1">
         ← Back to debts
       </button>

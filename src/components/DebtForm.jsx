@@ -128,7 +128,7 @@ export default function DebtForm({ onContinue }) {
   }
 
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
+    <div className="py-8 px-4">
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-800">Your Debts</h2>
         <p className="text-gray-500 text-sm mt-1">Enter up to {MAX_DEBTS} debts to calculate your payoff plan.</p>

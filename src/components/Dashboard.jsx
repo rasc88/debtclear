@@ -71,7 +71,7 @@ export default function Dashboard({ onBack }) {
     .filter(Boolean)
 
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
+    <div className="py-8 px-4">
       <div className="flex items-center justify-between mb-6">
         <div>
           <button onClick={onBack} className="text-sm text-gray-400 hover:text-gray-600 mb-1 flex items-center gap-1">
