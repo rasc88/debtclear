@@ -1,23 +1,25 @@
 import './index.css'
-import { useLocalStorageSync } from './hooks/useLocalStorage'
 import useDebtStore from './store/useDebtStore'
+import { useLocalStorageSync } from './hooks/useLocalStorage'
 import Captcha from './components/Captcha'
 import DebtForm from './components/DebtForm'
 import Dashboard from './components/Dashboard'
 
 export default function App() {
   useLocalStorageSync()
+
   const captchaPassed = useDebtStore((s) => s.captchaPassed)
+  const setCaptchaPassed = useDebtStore((s) => s.setCaptchaPassed)
+  const showDashboard = useDebtStore((s) => s.showDashboard)
+  const setShowDashboard = useDebtStore((s) => s.setShowDashboard)
 
   if (!captchaPassed) {
-    return <Captcha onPass={() => useDebtStore.getState().setCaptchaPassed(true)} />
+    return <Captcha onPass={() => setCaptchaPassed(true)} />
   }
 
-  return (
-    <main className="min-h-screen bg-gray-50 p-4">
-      <h1 className="text-3xl font-bold text-center mb-6">DebtClear</h1>
-      <DebtForm />
-      <Dashboard />
-    </main>
-  )
+  if (!showDashboard) {
+    return <DebtForm onContinue={() => setShowDashboard(true)} />
+  }
+
+  return <Dashboard onBack={() => setShowDashboard(false)} />
 }
