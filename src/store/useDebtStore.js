@@ -1,16 +1,21 @@
 import { create } from 'zustand'
 
+const DEFAULT_LOAN = {
+  enabled: false,
+  amount: '',
+  annualRate: '0',
+  monthlyPayment: '',
+  targetDebtId: null,
+}
+
 const useDebtStore = create((set, get) => ({
   debts: [],
-  attackOrder: [],     // array of debt IDs in attack priority
-  loanConfig: null,
+  attackOrder: [],
+  loanConfig: { ...DEFAULT_LOAN },
   captchaPassed: false,
-
-  // step: 'form' | 'order' | 'dashboard'
   step: 'form',
 
   setDebts: (debts) => {
-    // Keep attackOrder in sync: add new IDs at end, remove deleted ones
     const currentOrder = get().attackOrder
     const existingIds = new Set(currentOrder)
     const newIds = debts.map((d) => d.id)
@@ -22,7 +27,10 @@ const useDebtStore = create((set, get) => ({
   },
 
   setAttackOrder: (attackOrder) => set({ attackOrder }),
-  setLoanConfig: (loanConfig) => set({ loanConfig }),
+
+  // Merge partial fields into loanConfig
+  updateLoan: (fields) => set((s) => ({ loanConfig: { ...s.loanConfig, ...fields } })),
+
   setCaptchaPassed: (captchaPassed) => set({ captchaPassed }),
   setStep: (step) => set({ step }),
 }))

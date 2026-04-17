@@ -37,8 +37,10 @@ export function simulate(debts, attackOrder = [], loanConfig = null) {
     if (paidOff[d.id]) debtPayoffMonths[d.id] = 0
   }
 
+  const loanActive = loanConfig?.enabled && toNum(loanConfig.amount) > 0
+
   // Apply loan lump-sum at month 0
-  if (loanConfig?.targetDebtId && toNum(loanConfig.amount) > 0) {
+  if (loanActive && loanConfig?.targetDebtId) {
     const tid = loanConfig.targetDebtId
     balances[tid] = Math.max(0, balances[tid] - toNum(loanConfig.amount))
     if (balances[tid] === 0 && !paidOff[tid]) {
@@ -48,7 +50,7 @@ export function simulate(debts, attackOrder = [], loanConfig = null) {
   }
 
   const totalBudget = debts.reduce((s, d) => s + toNum(d.monthlyPayment), 0)
-  const loanPayment = loanConfig ? toNum(loanConfig.monthlyPayment) : 0
+  const loanPayment = loanActive ? toNum(loanConfig.monthlyPayment) : 0
 
   // Resolve attack order — filter to IDs that exist, then append any missing ones
   const knownIds = debts.map((d) => d.id)

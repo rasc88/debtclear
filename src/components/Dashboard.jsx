@@ -3,6 +3,8 @@ import useDebtStore from '../store/useDebtStore'
 import { simulate } from '../engine/simulate'
 import { formatCurrency, formatDate } from '../engine/formatters'
 import BalanceChart from './BalanceChart'
+import LoanModule from './LoanModule'
+import ComparisonPanel from './ComparisonPanel'
 import ExcelExport from './ExcelExport'
 
 function StatCard({ label, value, sub, accent }) {
@@ -39,25 +41,29 @@ export default function Dashboard({ onBack }) {
   const attackOrder = useDebtStore((s) => s.attackOrder)
   const loanConfig = useDebtStore((s) => s.loanConfig)
 
-  const result = useMemo(
+  // Always run both scenarios; display active one in summary, both in comparison
+  const resultWithout = useMemo(
+    () => simulate(debts, attackOrder, null),
+    [debts, attackOrder]
+  )
+  const resultWith = useMemo(
     () => simulate(debts, attackOrder, loanConfig),
     [debts, attackOrder, loanConfig]
   )
 
-  // Per-debt interest: sum interest accrued each month for each debt
+  const result = loanConfig.enabled ? resultWith : resultWithout
+
+  // Approximate per-debt interest from timeline
   const perDebtInterest = useMemo(() => {
-    const interest = {}
-    debts.forEach((d) => { interest[d.id] = 0 })
-    for (let i = 0; i < result.timeline.length; i++) {
+    const acc = {}
+    debts.forEach((d) => { acc[d.id] = 0 })
+    result.timeline.forEach((snap, i) => {
       debts.forEach((d) => {
         const prev = i === 0 ? parseFloat(d.balance) : result.timeline[i - 1].balances[d.id]
-        const curr = result.timeline[i].balances[d.id]
-        const rate = parseFloat(d.annualRate) / 100 / 12
-        // interest accrued = balance before payment × rate
-        interest[d.id] += prev * rate
+        acc[d.id] += prev * (parseFloat(d.annualRate) / 100 / 12)
       })
-    }
-    return interest
+    })
+    return acc
   }, [debts, result])
 
   const orderedDebts = attackOrder
@@ -77,7 +83,7 @@ export default function Dashboard({ onBack }) {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
         <StatCard
           label="Debt-free date"
           value={formatDate(result.totalMonths)}
@@ -95,8 +101,16 @@ export default function Dashboard({ onBack }) {
         />
       </div>
 
-      {/* Balance chart placeholder — Sprint 3 */}
-      <BalanceChart timeline={result.timeline} debts={debts} />
+      {/* Balance evolution chart */}
+      <BalanceChart timeline={result.timeline} debts={orderedDebts} />
+
+      {/* Personal loan module */}
+      <LoanModule />
+
+      {/* Comparison panel — only when loan is enabled */}
+      {loanConfig.enabled && (
+        <ComparisonPanel without={resultWithout} with={resultWith} />
+      )}
 
       {/* Per-debt breakdown */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm mb-4">
@@ -113,7 +127,7 @@ export default function Dashboard({ onBack }) {
 
       {/* Attack order reminder */}
       <div className="bg-indigo-50 rounded-xl px-4 py-3 text-xs text-indigo-700">
-        <strong>Attack order:</strong>{' '}
+        <strong>Attack order: </strong>
         {orderedDebts.map((d, i) => (
           <span key={d.id}>{i > 0 && ' → '}{d.name}</span>
         ))}

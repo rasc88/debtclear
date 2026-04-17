@@ -57,7 +57,7 @@ describe('simulate — avalanche rollover', () => {
 describe('simulate — personal loan lump sum', () => {
   it('applies lump sum to target debt at month 0', () => {
     const d = debt({ balance: '1000', annualRate: '0', minPayment: '0', monthlyPayment: '200' })
-    const loan = { amount: '500', annualRate: '0', monthlyPayment: '0', targetDebtId: 'd1' }
+    const loan = { enabled: true, amount: '500', annualRate: '0', monthlyPayment: '0', targetDebtId: 'd1' }
     const r = simulate([d], ['d1'], loan)
     // Balance starts at $500 after lump sum, $200/mo → 3 months (not 5)
     expect(r.totalMonths).toBe(3)
@@ -65,7 +65,7 @@ describe('simulate — personal loan lump sum', () => {
 
   it('marks debt as paid at month 0 when lump sum covers full balance', () => {
     const d = debt({ balance: '1000', annualRate: '0', minPayment: '0', monthlyPayment: '200' })
-    const loan = { amount: '1000', annualRate: '0', monthlyPayment: '0', targetDebtId: 'd1' }
+    const loan = { enabled: true, amount: '1000', annualRate: '0', monthlyPayment: '0', targetDebtId: 'd1' }
     const r = simulate([d], ['d1'], loan)
     expect(r.debtPayoffMonths['d1']).toBe(0)
   })
