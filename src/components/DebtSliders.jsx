@@ -45,6 +45,8 @@ export default function DebtSliders({ debts, attackOrder }) {
             const payment = parseInt(debt.monthlyPayment, 10) || 0
             const min = Math.floor(parseFloat(debt.minPayment) || 0)
             const max = sliderMax(debt)
+            const pct = max > min ? ((payment - min) / (max - min)) * 100 : 0
+            const TRACK_EMPTY = '#374151'
 
             return (
               <div key={debt.id}>
@@ -67,7 +69,7 @@ export default function DebtSliders({ debts, attackOrder }) {
                   </div>
                 </div>
 
-                {/* Slider */}
+                {/* Slider — gradient shows filled portion, CSS var controls thumb color */}
                 <input
                   type="range"
                   min={min}
@@ -75,8 +77,11 @@ export default function DebtSliders({ debts, attackOrder }) {
                   step={10}
                   value={payment}
                   onChange={(e) => updatePayment(debt.id, e.target.value)}
-                  className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
-                  style={{ accentColor: color }}
+                  className="w-full"
+                  style={{
+                    '--slider-color': color,
+                    background: `linear-gradient(to right, ${color} ${pct}%, ${TRACK_EMPTY} ${pct}%)`,
+                  }}
                 />
 
                 {/* Range labels */}

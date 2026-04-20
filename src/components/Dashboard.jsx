@@ -82,9 +82,6 @@ export default function Dashboard({ onBack }) {
         <ExcelExport />
       </div>
 
-      {/* ── Interactive controls ── */}
-      <DebtSliders debts={debts} attackOrder={attackOrder} />
-
       {/* ── Summary cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <StatCard
@@ -103,6 +100,9 @@ export default function Dashboard({ onBack }) {
           sub="across all debts"
         />
       </div>
+
+      {/* ── Interactive controls ── */}
+      <DebtSliders debts={debts} attackOrder={attackOrder} />
 
       {/* ── Balance chart ── */}
       <BalanceChart timeline={result.timeline} debts={orderedDebts} />
