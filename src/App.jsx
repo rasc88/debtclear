@@ -3,12 +3,10 @@ import useDebtStore from './store/useDebtStore'
 import { useLocalStorageSync } from './hooks/useLocalStorage'
 import Captcha from './components/Captcha'
 import DebtForm from './components/DebtForm'
-import AttackOrder from './components/AttackOrder'
 import Dashboard from './components/Dashboard'
 
 const STEPS = [
   { key: 'form', label: 'Debts' },
-  { key: 'order', label: 'Priority' },
   { key: 'dashboard', label: 'Plan' },
 ]
 
@@ -82,6 +80,8 @@ export default function App() {
 
   const captchaPassed = useDebtStore((s) => s.captchaPassed)
   const setCaptchaPassed = useDebtStore((s) => s.setCaptchaPassed)
+  const debts = useDebtStore((s) => s.debts)
+  const setAttackOrder = useDebtStore((s) => s.setAttackOrder)
   const step = useDebtStore((s) => s.step)
   const setStep = useDebtStore((s) => s.setStep)
 
@@ -91,15 +91,15 @@ export default function App() {
 
   setCaptchaPassed(true); // BYPASS
 
+  const goToDashboard = () => {
+    const sorted = [...debts].sort((a, b) => parseFloat(b.annualRate) - parseFloat(a.annualRate))
+    setAttackOrder(sorted.map((d) => d.id))
+    setStep('dashboard')
+  }
+
   return (
     <AppShell step={step}>
-      {step === 'form' && <DebtForm onContinue={() => setStep('order')} />}
-      {step === 'order' && (
-        <AttackOrder
-          onBack={() => setStep('form')}
-          onContinue={() => setStep('dashboard')}
-        />
-      )}
+      {step === 'form' && <DebtForm onContinue={goToDashboard} />}
       {step === 'dashboard' && <Dashboard onBack={() => setStep('form')} />}
     </AppShell>
   )

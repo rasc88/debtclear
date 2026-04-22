@@ -5,7 +5,7 @@ const DEFAULT_LOAN = {
   amount: '',
   annualRate: '0',
   monthlyPayment: '',
-  targetDebtId: null,
+  targets: [], // [{ debtId, amount }]
 }
 
 const useDebtStore = create((set, get) => ({

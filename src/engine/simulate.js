@@ -1,23 +1,17 @@
+export const LOAN_ID = '__loan__'
+
 /**
  * Avalanche simulation engine — pure JS, zero side effects.
  *
- * Strategy:
- *  - Pay minimum to every active debt each month.
- *  - Apply all remaining budget (surplus) to the current priority debt.
- *  - When a debt reaches $0 its full monthly payment rolls into the surplus
- *    for the next debt in the attack order.
- *  - If a personal loan is active its lump-sum is applied at month 0 and its
- *    monthly payment is subtracted from the available budget each month.
+ * When a personal loan is active it is treated as just another debt:
+ *  - Its proceeds reduce targeted card balances at month 0.
+ *  - It enters the attack order sorted by its APR vs card APRs.
+ *  - Its committed monthly payment counts toward the total budget.
+ *  - Surplus rolls into it exactly like any other debt in the order.
+ *  - totalMonths = when every card AND the loan are fully paid.
  *
- * @param {Object[]} debts        Debt objects from the store
- * @param {string[]} attackOrder  Debt IDs ordered by attack priority (index 0 = first)
- * @param {Object|null} loanConfig  { amount, annualRate, monthlyPayment, targetDebtId }
- * @returns {{
- *   timeline: { month: number, balances: Object }[],
- *   debtPayoffMonths: Object,   // debtId → month paid off (0 = paid at start by lump sum)
- *   totalInterest: number,
- *   totalMonths: number,
- * }}
+ * loanConfig: { enabled, amount, annualRate, monthlyPayment,
+ *               targets: [{ debtId, amount }] }
  */
 export function simulate(debts, attackOrder = [], loanConfig = null) {
   if (!debts || debts.length === 0) {
@@ -26,7 +20,6 @@ export function simulate(debts, attackOrder = [], loanConfig = null) {
 
   const toNum = (v) => parseFloat(v) || 0
 
-  // Working balances (mutable clone)
   const balances = {}
   const paidOff = {}
   const debtPayoffMonths = {}
@@ -37,57 +30,97 @@ export function simulate(debts, attackOrder = [], loanConfig = null) {
     if (paidOff[d.id]) debtPayoffMonths[d.id] = 0
   }
 
-  const loanActive = loanConfig?.enabled && toNum(loanConfig.amount) > 0
+  const loanAmount = toNum(loanConfig?.amount)
+  const loanActive = loanConfig?.enabled && loanAmount > 0
 
-  // Apply loan lump-sum at month 0
-  if (loanActive && loanConfig?.targetDebtId) {
-    const tid = loanConfig.targetDebtId
-    balances[tid] = Math.max(0, balances[tid] - toNum(loanConfig.amount))
-    if (balances[tid] === 0 && !paidOff[tid]) {
-      paidOff[tid] = true
-      debtPayoffMonths[tid] = 0
+  // Month 0 — distribute loan proceeds to targeted debts
+  if (loanActive) {
+    for (const t of (loanConfig.targets ?? [])) {
+      if (!Object.prototype.hasOwnProperty.call(balances, t.debtId)) continue
+      const amt = Math.min(toNum(t.amount), balances[t.debtId])
+      balances[t.debtId] = Math.max(0, balances[t.debtId] - amt)
+      if (balances[t.debtId] < 0.005 && !paidOff[t.debtId]) {
+        balances[t.debtId] = 0
+        paidOff[t.debtId] = true
+        debtPayoffMonths[t.debtId] = 0
+      }
     }
   }
 
-  const totalBudget = debts.reduce((s, d) => s + toNum(d.monthlyPayment), 0)
-  const loanPayment = loanActive ? toNum(loanConfig.monthlyPayment) : 0
+  // Build unified debt list — loan is another debt in the system
+  const loanMonthlyPayment = loanActive ? toNum(loanConfig.monthlyPayment) : 0
+  const loanAnnualRate = loanActive ? toNum(loanConfig.annualRate) : 0
+  const loanIsDebt = loanActive && loanMonthlyPayment > 0
 
-  // Resolve attack order — filter to IDs that exist, then append any missing ones
-  const knownIds = debts.map((d) => d.id)
+  if (loanIsDebt) {
+    balances[LOAN_ID] = loanAmount
+    paidOff[LOAN_ID] = loanAmount <= 0.005
+    if (paidOff[LOAN_ID]) debtPayoffMonths[LOAN_ID] = 0
+  }
+
+  // Resolve card attack order, then insert loan by APR (lower rate = lower priority)
+  const knownCardIds = debts.map((d) => d.id)
   const orderedIds = [
-    ...attackOrder.filter((id) => knownIds.includes(id)),
-    ...knownIds.filter((id) => !attackOrder.includes(id)),
+    ...attackOrder.filter((id) => knownCardIds.includes(id)),
+    ...knownCardIds.filter((id) => !attackOrder.includes(id)),
   ]
+
+  if (loanIsDebt && !paidOff[LOAN_ID]) {
+    const insertAt = orderedIds.findIndex((id) => {
+      const d = debts.find((x) => x.id === id)
+      return d && toNum(d.annualRate) < loanAnnualRate
+    })
+    if (insertAt === -1) orderedIds.push(LOAN_ID)
+    else orderedIds.splice(insertAt, 0, LOAN_ID)
+  }
+
+  // Total budget = payments for cards still active + loan payment.
+  // Debts paid off at month 0 by the lump sum are excluded — their payment slot
+  // is now occupied by the loan payment, not freed as surplus.
+  const cardBudget = debts.reduce((s, d) => paidOff[d.id] ? s : s + toNum(d.monthlyPayment), 0)
+  const totalBudget = cardBudget + (loanIsDebt ? loanMonthlyPayment : 0)
+
+  const getMinPayment = (id) => {
+    if (id === LOAN_ID) return loanMonthlyPayment
+    return toNum(debts.find((d) => d.id === id)?.minPayment)
+  }
+
+  const getRate = (id) => {
+    if (id === LOAN_ID) return loanAnnualRate / 100 / 12
+    return toNum(debts.find((d) => d.id === id)?.annualRate) / 100 / 12
+  }
+
+  const allIds = [...knownCardIds, ...(loanIsDebt ? [LOAN_ID] : [])]
 
   const timeline = []
   let totalInterest = 0
   const MAX_MONTHS = 600
 
   for (let month = 1; month <= MAX_MONTHS; month++) {
-    // 1. Apply monthly interest
-    for (const d of debts) {
-      if (paidOff[d.id]) continue
-      const rate = toNum(d.annualRate) / 100 / 12
-      const interest = balances[d.id] * rate
-      balances[d.id] += interest
+    // 1. Apply monthly interest to all active debts (cards + loan)
+    for (const id of allIds) {
+      if (paidOff[id]) continue
+      const rate = getRate(id)
+      const interest = balances[id] * rate
+      balances[id] += interest
       totalInterest += interest
     }
 
-    // 2. Pay minimum to every active debt
-    let available = totalBudget - loanPayment
-    for (const d of debts) {
-      if (paidOff[d.id]) continue
-      const pay = Math.min(toNum(d.minPayment), balances[d.id])
-      balances[d.id] = Math.max(0, balances[d.id] - pay)
+    // 2. Pay minimums on all active debts
+    let available = totalBudget
+    for (const id of allIds) {
+      if (paidOff[id]) continue
+      const pay = Math.min(getMinPayment(id), balances[id])
+      balances[id] = Math.max(0, balances[id] - pay)
       available -= pay
-      if (balances[d.id] < 0.005) {
-        balances[d.id] = 0
-        paidOff[d.id] = true
-        debtPayoffMonths[d.id] = month
+      if (balances[id] < 0.005) {
+        balances[id] = 0
+        paidOff[id] = true
+        debtPayoffMonths[id] = month
       }
     }
 
-    // 3. Apply surplus to current priority debt
+    // 3. Apply surplus to the highest-priority unpaid debt (avalanche)
     if (available > 0.005) {
       const priorityId = orderedIds.find((id) => !paidOff[id])
       if (priorityId) {
@@ -101,10 +134,11 @@ export function simulate(debts, attackOrder = [], loanConfig = null) {
       }
     }
 
-    // 4. Snapshot
-    timeline.push({ month, balances: { ...balances } })
+    // 4. Snapshot (include loan balance when active)
+    const snap = { month, balances: { ...balances } }
+    timeline.push(snap)
 
-    // 5. Done when all paid off
+    // 5. Done when everything is paid
     if (Object.values(paidOff).every(Boolean)) {
       return { timeline, debtPayoffMonths, totalInterest, totalMonths: month }
     }

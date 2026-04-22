@@ -4,15 +4,9 @@ import { formatCurrency } from '../engine/formatters'
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 
-function sliderMax(debt) {
-  const balance = parseFloat(debt.balance) || 0
-  const current = parseFloat(debt.monthlyPayment) || 0
-  return Math.ceil(Math.max(balance * 0.5, current * 3, 500) / 50) * 50
-}
-
-export default function DebtSliders({ debts, attackOrder }) {
+export default function DebtSliders({ debts }) {
   const setDebts = useDebtStore((s) => s.setDebts)
-  const setAttackOrder = useDebtStore((s) => s.setAttackOrder)
+  const loanConfig = useDebtStore((s) => s.loanConfig)
 
   const updatePayment = useCallback(
     (id, raw) => {
@@ -22,35 +16,51 @@ export default function DebtSliders({ debts, attackOrder }) {
     [debts, setDebts],
   )
 
-  const promoteToFirst = useCallback(
-    (id) => setAttackOrder([id, ...attackOrder.filter((x) => x !== id)]),
-    [attackOrder, setAttackOrder],
+  // Color tied to position in original debts array (stable across any reordering)
+  const colorMap = Object.fromEntries(debts.map((d, i) => [d.id, COLORS[i % COLORS.length]]))
+
+  // Debts fully covered by the loan don't need a slider — they're already paid
+  const loanPaidIds = new Set(
+    loanConfig.enabled
+      ? (loanConfig.targets ?? [])
+          .filter((t) => {
+            const debt = debts.find((d) => d.id === t.debtId)
+            return debt && (parseFloat(t.amount) || 0) >= (parseFloat(debt.balance) || 0)
+          })
+          .map((t) => t.debtId)
+      : [],
   )
 
-  const orderedDebts = attackOrder.map((id) => debts.find((d) => d.id === id)).filter(Boolean)
-  const total = debts.reduce((s, d) => s + (parseInt(d.monthlyPayment, 10) || 0), 0)
-  const firstId = attackOrder[0]
+  const activeDebts = debts.filter((d) => !loanPaidIds.has(d.id))
+
+  const loanPayment = loanConfig.enabled ? (parseInt(loanConfig.monthlyPayment, 10) || 0) : 0
+  const cardTotal = activeDebts.reduce((s, d) => s + (parseInt(d.monthlyPayment, 10) || 0), 0)
+  const total = cardTotal + loanPayment
+
+  const TRACK_EMPTY = '#374151'
 
   return (
     <div className="bg-gray-900 rounded-2xl overflow-hidden mb-4 shadow-lg">
-      {/* ── Monthly payments ── */}
       <div className="px-5 pt-5 pb-4">
         <p className="text-xs font-bold tracking-widest text-gray-400 uppercase mb-4">
-          Monthly card payments
+          Monthly payments
         </p>
 
         <div className="space-y-5">
-          {orderedDebts.map((debt, i) => {
-            const color = COLORS[i % COLORS.length]
-            const payment = parseInt(debt.monthlyPayment, 10) || 0
-            const min = Math.floor(parseFloat(debt.minPayment) || 0)
-            const max = sliderMax(debt)
+          {/* Active card debts — adjustable sliders */}
+          {activeDebts.map((debt) => {
+            const color    = colorMap[debt.id]
+            const payment  = parseInt(debt.monthlyPayment, 10) || 0
+            const balance  = parseFloat(debt.balance) || 0
+            const rate     = parseFloat(debt.annualRate) || 0
+            // Floor: must always beat monthly interest so the balance never grows
+            const interest = Math.ceil(balance * (rate / 100 / 12))
+            const min      = Math.max(Math.floor(parseFloat(debt.minPayment) || 0), interest + 1)
+            const max      = Math.max(Math.ceil(balance / 50) * 50, payment, min, 100)
             const pct = max > min ? ((payment - min) / (max - min)) * 100 : 0
-            const TRACK_EMPTY = '#374151'
 
             return (
               <div key={debt.id}>
-                {/* Name + input */}
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-semibold" style={{ color }}>
                     {debt.name}
@@ -69,7 +79,6 @@ export default function DebtSliders({ debts, attackOrder }) {
                   </div>
                 </div>
 
-                {/* Slider — gradient shows filled portion, CSS var controls thumb color */}
                 <input
                   type="range"
                   min={min}
@@ -84,7 +93,6 @@ export default function DebtSliders({ debts, attackOrder }) {
                   }}
                 />
 
-                {/* Range labels */}
                 <div className="flex justify-between text-xs text-gray-600 mt-1">
                   <span>${min.toLocaleString()}</span>
                   <span>${max.toLocaleString()}</span>
@@ -92,47 +100,25 @@ export default function DebtSliders({ debts, attackOrder }) {
               </div>
             )
           })}
+
+          {/* Loan row — fixed payment, no slider */}
+          {loanConfig.enabled && loanPayment > 0 && (
+            <div className="border-t border-gray-800 pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-semibold text-gray-400">Personal Loan</span>
+                  <p className="text-xs text-gray-600 mt-0.5">Fixed payment — paid in parallel</p>
+                </div>
+                <span className="text-white text-sm font-bold">{formatCurrency(loanPayment)}/mo</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Total */}
         <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-800">
           <span className="text-sm text-gray-400">Total monthly budget</span>
           <span className="text-xl font-bold text-white">{formatCurrency(total)}</span>
-        </div>
-      </div>
-
-      {/* ── Attack order selector ── */}
-      <div className="bg-gray-800/60 px-5 py-4">
-        <p className="text-xs font-bold tracking-widest text-gray-400 uppercase mb-3">
-          Which debt do you attack first?
-        </p>
-        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${orderedDebts.length}, 1fr)` }}>
-          {orderedDebts.map((debt, i) => {
-            const color = COLORS[i % COLORS.length]
-            const isFirst = debt.id === firstId
-
-            return (
-              <button
-                key={debt.id}
-                onClick={() => promoteToFirst(debt.id)}
-                className="rounded-xl py-3 px-3 text-center transition-all border-2"
-                style={{
-                  borderColor: isFirst ? color : '#374151',
-                  backgroundColor: isFirst ? `${color}18` : 'transparent',
-                }}
-              >
-                <p
-                  className="text-sm font-bold truncate"
-                  style={{ color: isFirst ? color : '#9ca3af' }}
-                >
-                  {debt.name}
-                </p>
-                <p className="text-xs mt-0.5" style={{ color: isFirst ? color : '#6b7280' }}>
-                  Rate {debt.annualRate}%
-                </p>
-              </button>
-            )
-          })}
         </div>
       </div>
     </div>

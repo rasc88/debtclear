@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import useDebtStore from '../store/useDebtStore'
-import { simulate } from '../engine/simulate'
+import { simulate, LOAN_ID } from '../engine/simulate'
 import { formatCurrency, formatDate } from '../engine/formatters'
 import BalanceChart from './BalanceChart'
 import DebtSliders from './DebtSliders'
@@ -69,6 +69,21 @@ export default function Dashboard({ onBack }) {
     .map((id) => debts.find((d) => d.id === id))
     .filter(Boolean)
 
+  const loanInterest = useMemo(() => {
+    if (!loanConfig.enabled || !parseFloat(loanConfig.amount)) return 0
+    const rate = parseFloat(loanConfig.annualRate) / 100 / 12
+    let total = 0
+    result.timeline.forEach((snap, i) => {
+      const prev = i === 0 ? parseFloat(loanConfig.amount) : (result.timeline[i - 1].balances[LOAN_ID] ?? 0)
+      total += prev * rate
+    })
+    return total
+  }, [loanConfig, result])
+
+  const chartDebts = loanConfig.enabled && parseFloat(loanConfig.amount) > 0
+    ? [...orderedDebts, { id: LOAN_ID, name: 'Personal Loan' }]
+    : orderedDebts
+
   return (
     <div className="py-6 px-4 space-y-4">
       {/* Header */}
@@ -96,16 +111,21 @@ export default function Dashboard({ onBack }) {
         />
         <StatCard
           label="Monthly budget"
-          value={formatCurrency(debts.reduce((s, d) => s + parseFloat(d.monthlyPayment || 0), 0))}
+          value={formatCurrency(
+            debts
+              .filter((d) => (result.debtPayoffMonths[d.id] ?? 1) !== 0)
+              .reduce((s, d) => s + parseFloat(d.monthlyPayment || 0), 0) +
+            (loanConfig.enabled ? parseFloat(loanConfig.monthlyPayment || 0) : 0)
+          )}
           sub="across all debts"
         />
       </div>
 
       {/* ── Interactive controls ── */}
-      <DebtSliders debts={debts} attackOrder={attackOrder} />
+      <DebtSliders debts={debts} />
 
       {/* ── Balance chart ── */}
-      <BalanceChart timeline={result.timeline} debts={orderedDebts} />
+      <BalanceChart timeline={result.timeline} debts={chartDebts} />
 
       {/* ── Personal loan module ── */}
       <LoanModule />
@@ -126,6 +146,13 @@ export default function Dashboard({ onBack }) {
             interest={perDebtInterest[debt.id] ?? 0}
           />
         ))}
+        {loanConfig.enabled && parseFloat(loanConfig.amount) > 0 && (
+          <DebtResultRow
+            debt={{ name: 'Personal Loan', annualRate: loanConfig.annualRate, balance: loanConfig.amount }}
+            payoffMonth={result.debtPayoffMonths[LOAN_ID] ?? result.totalMonths}
+            interest={loanInterest}
+          />
+        )}
       </div>
     </div>
   )

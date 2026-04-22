@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { simulate } from '../engine/simulate'
+import { simulate, LOAN_ID } from '../engine/simulate'
 
 const debt = (overrides) => ({
   id: 'd1',
@@ -54,10 +54,10 @@ describe('simulate — avalanche rollover', () => {
   })
 })
 
-describe('simulate — personal loan lump sum', () => {
+describe('simulate — personal loan', () => {
   it('applies lump sum to target debt at month 0', () => {
     const d = debt({ balance: '1000', annualRate: '0', minPayment: '0', monthlyPayment: '200' })
-    const loan = { enabled: true, amount: '500', annualRate: '0', monthlyPayment: '0', targetDebtId: 'd1' }
+    const loan = { enabled: true, amount: '500', annualRate: '0', monthlyPayment: '0', targets: [{ debtId: 'd1', amount: '500' }] }
     const r = simulate([d], ['d1'], loan)
     // Balance starts at $500 after lump sum, $200/mo → 3 months (not 5)
     expect(r.totalMonths).toBe(3)
@@ -65,8 +65,50 @@ describe('simulate — personal loan lump sum', () => {
 
   it('marks debt as paid at month 0 when lump sum covers full balance', () => {
     const d = debt({ balance: '1000', annualRate: '0', minPayment: '0', monthlyPayment: '200' })
-    const loan = { enabled: true, amount: '1000', annualRate: '0', monthlyPayment: '0', targetDebtId: 'd1' }
+    const loan = { enabled: true, amount: '1000', annualRate: '0', monthlyPayment: '0', targets: [{ debtId: 'd1', amount: '1000' }] }
     const r = simulate([d], ['d1'], loan)
     expect(r.debtPayoffMonths['d1']).toBe(0)
+  })
+
+  it('surplus rolls into loan after cards are paid', () => {
+    // Card: $500, 0%, $200/mo. Loan: $1000, 0%, $100/mo. No targets (no debt paid at month 0).
+    // Budget = $200 (card) + $100 (loan) = $300/mo.
+    // Card attacked first (higher 0% = same, but it's the priority). Card min=$0, loan min=$100.
+    // Available surplus = 300 - 0 - 100 = $200 → goes to card.
+    // Card gets $200/mo: paid off in 3 months (500/200 = 2.5 → month 3).
+    // After card, full $300 → loan. Loan had $700 left → paid in ~3 more months.
+    const d = debt({ balance: '500', annualRate: '0', minPayment: '0', monthlyPayment: '200' })
+    const loan = { enabled: true, amount: '1000', annualRate: '0', monthlyPayment: '100', targets: [] }
+    const r = simulate([d], ['d1'], loan)
+    expect(r.debtPayoffMonths['d1']).toBe(3)
+    expect(r.debtPayoffMonths[LOAN_ID]).toBe(6)
+    expect(r.totalMonths).toBe(6)
+  })
+
+  it('budget does not double-count debts paid by lump sum at month 0', () => {
+    // Card paid off at month 0 by loan → its $200/mo slot now belongs to loan, not surplus.
+    // Budget = $0 (card gone) + $100 (loan) = $100/mo.
+    // Loan: $500, 0%, $100/mo → 5 months.
+    const d = debt({ balance: '500', annualRate: '0', minPayment: '0', monthlyPayment: '200' })
+    const loan = {
+      enabled: true, amount: '500', annualRate: '0', monthlyPayment: '100',
+      targets: [{ debtId: 'd1', amount: '500' }],
+    }
+    const r = simulate([d], ['d1'], loan)
+    expect(r.debtPayoffMonths['d1']).toBe(0) // paid at month 0
+    expect(r.debtPayoffMonths[LOAN_ID]).toBe(5) // $500 / $100 = 5 months
+    expect(r.totalMonths).toBe(5)
+  })
+
+  it('applies lump sum to multiple debts', () => {
+    const d1 = debt({ id: 'd1', balance: '500', annualRate: '0', minPayment: '0', monthlyPayment: '100' })
+    const d2 = debt({ id: 'd2', balance: '500', annualRate: '0', minPayment: '0', monthlyPayment: '100' })
+    const loan = {
+      enabled: true, amount: '1000', annualRate: '0', monthlyPayment: '0',
+      targets: [{ debtId: 'd1', amount: '500' }, { debtId: 'd2', amount: '500' }],
+    }
+    const r = simulate([d1, d2], ['d1', 'd2'], loan)
+    expect(r.debtPayoffMonths['d1']).toBe(0)
+    expect(r.debtPayoffMonths['d2']).toBe(0)
   })
 })
