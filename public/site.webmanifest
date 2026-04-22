@@ -1,0 +1,22 @@
+{
+  "name": "DebtClear — Debt Payoff Calculator",
+  "short_name": "DebtClear",
+  "description": "Calculate your debt-free date using the avalanche method. 100% private — all calculations run in your browser.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/apple-touch-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
