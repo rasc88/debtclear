@@ -79,6 +79,30 @@ export default function Dashboard({ onBack }) {
     return total
   }, [loanConfig, result])
 
+  // For the comparison panel, we compare how long it takes to clear the original card debts.
+  // Using resultWith.totalMonths would unfairly inflate "with loan" by the loan's own repayment
+  // period — cards might be paid off at month 12 but the loan runs until month 36.
+  const cardPayoffMonthsWith = useMemo(() => {
+    if (!loanConfig.enabled) return resultWith.totalMonths
+    return Math.max(0, ...debts.map((d) => resultWith.debtPayoffMonths[d.id] ?? resultWith.totalMonths))
+  }, [debts, loanConfig, resultWith])
+
+  const cardInterestWithout = useMemo(() => {
+    const acc = {}
+    debts.forEach((d) => { acc[d.id] = 0 })
+    resultWithout.timeline.forEach((snap, i) => {
+      debts.forEach((d) => {
+        const prev = i === 0 ? parseFloat(d.balance) : (resultWithout.timeline[i - 1].balances[d.id] ?? 0)
+        acc[d.id] += (prev ?? 0) * (parseFloat(d.annualRate) / 100 / 12)
+      })
+    })
+    return Object.values(acc).reduce((s, v) => s + v, 0)
+  }, [debts, resultWithout])
+
+  const cardInterestWith = useMemo(() => {
+    return Object.values(perDebtInterest).reduce((s, v) => s + v, 0)
+  }, [perDebtInterest])
+
   const chartDebts = loanConfig.enabled && parseFloat(loanConfig.amount) > 0
     ? [...orderedDebts, { id: LOAN_ID, name: 'Personal Loan' }]
     : orderedDebts
@@ -128,7 +152,12 @@ export default function Dashboard({ onBack }) {
 
       {/* ── Comparison panel ── */}
       {loanConfig.enabled && (
-        <ComparisonPanel without={resultWithout} with={resultWith} />
+        <ComparisonPanel
+          withoutMonths={resultWithout.totalMonths}
+          withoutInterest={cardInterestWithout}
+          withMonths={cardPayoffMonthsWith}
+          withInterest={cardInterestWith}
+        />
       )}
 
       {/* ── Per-debt breakdown ── */}

@@ -23,19 +23,20 @@ function Col({ title, months, interest, accent }) {
   )
 }
 
-export default function ComparisonPanel({ without: wo, with: wi }) {
-  if (!wo || !wi) return null
+export default function ComparisonPanel({ withoutMonths, withoutInterest, withMonths, withInterest }) {
+  if (withoutMonths == null) return null
 
-  const monthsSaved = wo.totalMonths - wi.totalMonths
-  const interestSaved = wo.totalInterest - wi.totalInterest
+  const monthsSaved = withoutMonths - withMonths
+  const interestSaved = withoutInterest - withInterest
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm mb-4">
       <h3 className="text-sm font-semibold text-gray-700 mb-3">Loan Impact Comparison</h3>
+      <p className="text-xs text-gray-400 mb-3">Comparing how quickly your original debts are paid off</p>
 
       <div className="flex gap-3 mb-4">
-        <Col title="Without loan" months={wo.totalMonths} interest={wo.totalInterest} />
-        <Col title="With loan" months={wi.totalMonths} interest={wi.totalInterest} accent />
+        <Col title="Without loan" months={withoutMonths} interest={withoutInterest} />
+        <Col title="With loan" months={withMonths} interest={withInterest} accent />
       </div>
 
       {(monthsSaved > 0 || interestSaved > 0) ? (
