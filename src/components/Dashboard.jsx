@@ -3,8 +3,7 @@ import useDebtStore from '../store/useDebtStore'
 import { simulate, LOAN_ID } from '../engine/simulate'
 import { formatCurrency, formatDate } from '../engine/formatters'
 import BalanceChart from './BalanceChart'
-import DebtSliders from './DebtSliders'
-import LoanModule from './LoanModule'
+import SimulationPanel from './SimulationPanel'
 import ComparisonPanel from './ComparisonPanel'
 import ExcelExport from './ExcelExport'
 
@@ -121,14 +120,11 @@ export default function Dashboard({ onBack }) {
         />
       </div>
 
-      {/* ── Interactive controls ── */}
-      <DebtSliders debts={debts} />
+      {/* ── Simulation panel (sliders + loan) ── */}
+      <SimulationPanel debts={debts} />
 
       {/* ── Balance chart ── */}
       <BalanceChart timeline={result.timeline} debts={chartDebts} />
-
-      {/* ── Personal loan module ── */}
-      <LoanModule />
 
       {/* ── Comparison panel ── */}
       {loanConfig.enabled && (
