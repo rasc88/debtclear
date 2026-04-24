@@ -57,15 +57,27 @@ export default function Dashboard({ onBack }) {
 
   const perDebtInterest = useMemo(() => {
     const acc = {}
-    debts.forEach((d) => { acc[d.id] = 0 })
+    // Start balances after loan lump-sum applied at month 0
+    const startBal = {}
+    debts.forEach((d) => {
+      acc[d.id] = 0
+      startBal[d.id] = parseFloat(d.balance) || 0
+    })
+    if (loanConfig?.enabled) {
+      for (const t of (loanConfig.targets ?? [])) {
+        if (startBal[t.debtId] !== undefined) {
+          startBal[t.debtId] = Math.max(0, startBal[t.debtId] - (parseFloat(t.amount) || 0))
+        }
+      }
+    }
     result.timeline.forEach((snap, i) => {
       debts.forEach((d) => {
-        const prev = i === 0 ? parseFloat(d.balance) : result.timeline[i - 1].balances[d.id]
+        const prev = i === 0 ? startBal[d.id] : (result.timeline[i - 1].balances[d.id] ?? 0)
         acc[d.id] += prev * (parseFloat(d.annualRate) / 100 / 12)
       })
     })
     return acc
-  }, [debts, result])
+  }, [debts, loanConfig, result])
 
   const orderedDebts = attackOrder
     .map((id) => debts.find((d) => d.id === id))

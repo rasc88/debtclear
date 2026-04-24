@@ -1,7 +1,6 @@
 import './index.css'
 import useDebtStore from './store/useDebtStore'
 import { useLocalStorageSync } from './hooks/useLocalStorage'
-import Captcha from './components/Captcha'
 import DebtForm from './components/DebtForm'
 import Dashboard from './components/Dashboard'
 
@@ -78,21 +77,10 @@ function AppShell({ step, children }) {
 export default function App() {
   useLocalStorageSync()
 
-  const captchaPassed = useDebtStore((s) => s.captchaPassed)
-  const setCaptchaPassed = useDebtStore((s) => s.setCaptchaPassed)
-  const debts = useDebtStore((s) => s.debts)
-  const setAttackOrder = useDebtStore((s) => s.setAttackOrder)
   const step = useDebtStore((s) => s.step)
   const setStep = useDebtStore((s) => s.setStep)
 
-  //if (!captchaPassed) {
-  //  return <Captcha onPass={() => setCaptchaPassed(true)} />
-  //}
-
-  setCaptchaPassed(true); // BYPASS
-
   const goToDashboard = () => {
-    // Keep entry order — user sets priority in the simulation panel
     setStep('dashboard')
   }
 
