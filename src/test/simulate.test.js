@@ -69,29 +69,26 @@ describe('simulate — personal loan', () => {
   })
 
   it('surplus rolls into loan after cards are paid', () => {
-    // Card: $500, 0%, min=$0. Loan: $1000, 0%, $100/mo. Budget: $200 for card.
-    // totalBudget = $200 + $100 = $300. Loan min = $100.
-    // Surplus = $300 - $0 - $100 = $200 → card (attacked first).
-    // Card paid at month 3 (500 / 200 = 2.5 → ceil = 3).
-    // After card, full $300 goes to loan. Loan had $700 left → paid at month 6.
+    // Budget $300 (all-inclusive): covers card min $0 + loan min $100 + $200 surplus.
+    // Surplus → card (attacked first). Card $500 / $200 → paid at month 3.
+    // After card, full $300 → loan. Loan had $700 left → paid at month 6.
     const d = debt({ balance: '500', annualRate: '0', minPayment: '0' })
     const loan = { enabled: true, amount: '1000', annualRate: '0', monthlyPayment: '100', targets: [] }
-    const r = simulate([d], ['d1'], loan, 200)
+    const r = simulate([d], ['d1'], loan, 300)
     expect(r.debtPayoffMonths['d1']).toBe(3)
     expect(r.debtPayoffMonths[LOAN_ID]).toBe(6)
     expect(r.totalMonths).toBe(6)
   })
 
   it('monthly budget funds the loan when card is fully paid by lump sum', () => {
-    // Card ($500) paid at month 0 by lump sum. Budget: $50/mo. Loan: $500, $50/mo.
-    // totalBudget = $50 + $50 = $100/mo. Loan: min=$50 + surplus=$50 = $100/mo.
-    // Loan paid in 5 months (500 / 100 = 5).
+    // Budget $100 (all-inclusive): covers loan min $50 + $50 surplus → loan gets $100/mo.
+    // Card ($500) paid at month 0 by lump sum. Loan $500 / $100/mo → paid in 5 months.
     const d = debt({ balance: '500', annualRate: '0', minPayment: '50' })
     const loan = {
       enabled: true, amount: '500', annualRate: '0', monthlyPayment: '50',
       targets: [{ debtId: 'd1', amount: '500' }],
     }
-    const r = simulate([d], ['d1'], loan, 50)
+    const r = simulate([d], ['d1'], loan, 100)
     expect(r.debtPayoffMonths['d1']).toBe(0)
     expect(r.debtPayoffMonths[LOAN_ID]).toBe(5)
     expect(r.totalMonths).toBe(5)

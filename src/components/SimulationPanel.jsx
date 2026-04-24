@@ -53,11 +53,12 @@ function LoanField({ label, value, onChange, prefix, suffix, placeholder }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function SimulationPanel({ debts }) {
-  const monthlyBudget  = useDebtStore((s) => s.monthlyBudget)
-  const attackOrder    = useDebtStore((s) => s.attackOrder)
-  const setAttackOrder = useDebtStore((s) => s.setAttackOrder)
-  const loan           = useDebtStore((s) => s.loanConfig)
-  const updateLoan     = useDebtStore((s) => s.updateLoan)
+  const monthlyBudget    = useDebtStore((s) => s.monthlyBudget)
+  const setMonthlyBudget = useDebtStore((s) => s.setMonthlyBudget)
+  const attackOrder      = useDebtStore((s) => s.attackOrder)
+  const setAttackOrder   = useDebtStore((s) => s.setAttackOrder)
+  const loan             = useDebtStore((s) => s.loanConfig)
+  const updateLoan       = useDebtStore((s) => s.updateLoan)
 
   // ── Loan logic ──────────────────────────────────────────────────────────────
 
@@ -120,13 +121,16 @@ export default function SimulationPanel({ debts }) {
     ...(loanInList && !attackOrder.includes(LOAN_ID) ? [{ kind: 'loan', id: LOAN_ID }] : []),
   ]
 
-  const budget   = parseFloat(monthlyBudget) || 0
-  const sumMins  = orderedItems.reduce((s, item) => {
-    if (item.kind === 'loan') return s  // loan min handled separately in simulation
+  const budget       = parseFloat(monthlyBudget) || 0
+  const sumCardMins  = orderedItems.reduce((s, item) => {
+    if (item.kind === 'loan') return s
     return s + (parseFloat(item.debt.minPayment) || 0)
   }, 0)
-  const surplus  = Math.max(0, budget - sumMins)
-  const total    = budget + loanPayment
+  // Budget is all-inclusive: covers card minimums + loan minimum + surplus.
+  const totalMins      = sumCardMins + loanPayment
+  const surplus        = Math.max(0, budget - totalMins)
+  const budgetTooLow   = budget > 0 && budget < totalMins
+  const minBudgetNeeded = totalMins
 
   const visibleIds = orderedItems.map((item) => item.id)
 
@@ -252,10 +256,44 @@ export default function SimulationPanel({ debts }) {
           })}
         </div>
 
-        {/* Total */}
-        <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
-          <span className="text-sm text-gray-500">Total monthly outflow</span>
-          <span className="text-xl font-bold text-gray-800">{formatCurrency(total)}</span>
+        {/* Editable budget */}
+        <div className="mt-5 pt-4 border-t border-gray-100">
+          <div className="flex items-center justify-between gap-3">
+            <label className="text-sm text-gray-500 shrink-0">Monthly debt budget</label>
+            <div className="flex items-center gap-1.5">
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">$</span>
+                <input
+                  type="number"
+                  value={monthlyBudget}
+                  onChange={(e) => setMonthlyBudget(e.target.value)}
+                  min="0"
+                  step="1"
+                  className={[
+                    'w-28 pl-7 pr-2 py-1.5 border rounded-lg text-sm font-bold text-right focus:outline-none focus:ring-2',
+                    budgetTooLow
+                      ? 'border-red-400 focus:ring-red-300 text-red-700'
+                      : 'border-gray-200 focus:ring-indigo-300 text-gray-800',
+                  ].join(' ')}
+                />
+              </div>
+              <span className="text-sm text-gray-400">/mo</span>
+            </div>
+          </div>
+          {budgetTooLow && (
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <p className="text-xs text-red-500">
+                Need at least {formatCurrency(minBudgetNeeded)}/mo to cover all minimums
+              </p>
+              <button
+                type="button"
+                onClick={() => setMonthlyBudget(String(Math.ceil(minBudgetNeeded) + 1))}
+                className="text-xs font-semibold text-white bg-red-500 hover:bg-red-600 px-2 py-0.5 rounded-md whitespace-nowrap"
+              >
+                Set {formatCurrency(Math.ceil(minBudgetNeeded) + 1)}/mo
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -274,7 +312,7 @@ export default function SimulationPanel({ debts }) {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <LoanField label="Loan amount"               value={loan.amount}         onChange={(v) => updateLoan({ amount: v })}          prefix="$" placeholder="e.g. 5000" />
               <LoanField label="Annual interest rate"      value={loan.annualRate}     onChange={(v) => updateLoan({ annualRate: v })}      suffix="%" placeholder="0 for interest-free" />
-              <LoanField label="Monthly payment to lender" value={loan.monthlyPayment} onChange={(v) => updateLoan({ monthlyPayment: v })}  prefix="$" placeholder="e.g. 200" />
+              <LoanField label="Minimum monthly payment"   value={loan.monthlyPayment} onChange={(v) => updateLoan({ monthlyPayment: v })}  prefix="$" placeholder="e.g. 200" />
             </div>
 
             {loanAmount > 0 && (
@@ -353,8 +391,8 @@ export default function SimulationPanel({ debts }) {
 
                 {parseFloat(loan.monthlyPayment) > 0 && (
                   <p className="text-xs text-indigo-600 bg-indigo-50 rounded-lg px-3 py-2">
-                    Loan of {formatCurrency(loanAmount)} at {loan.annualRate || 0}% APR repaid at{' '}
-                    {formatCurrency(parseFloat(loan.monthlyPayment))}/mo alongside your debts.
+                    Loan of {formatCurrency(loanAmount)} at {loan.annualRate || 0}% APR ·{' '}
+                    minimum {formatCurrency(parseFloat(loan.monthlyPayment))}/mo included in your monthly budget.
                   </p>
                 )}
               </>

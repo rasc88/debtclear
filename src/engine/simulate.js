@@ -81,11 +81,9 @@ export function simulate(debts, attackOrder = [], loanConfig = null, monthlyBudg
     else orderedIds.splice(insertAt, 0, LOAN_ID)
   }
 
-  // Total budget = user's monthly budget for debts + loan payment (if loan is a debt).
-  // The monthly budget is a global commitment, not per-debt — surplus always flows
-  // to the top-priority unpaid debt via avalanche.
-  const cardBudget = toNum(monthlyBudget)
-  const totalBudget = cardBudget + (loanIsDebt ? loanMonthlyPayment : 0)
+  // The monthly budget is all-inclusive: it covers card minimums, the loan minimum,
+  // and whatever surplus flows to the top-priority debt via avalanche.
+  const totalBudget = toNum(monthlyBudget)
 
   const getMinPayment = (id) => {
     if (id === LOAN_ID) return loanMonthlyPayment

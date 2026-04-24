@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect } from 'react'
 import useDebtStore from '../store/useDebtStore'
 import { simulate, LOAN_ID } from '../engine/simulate'
 import { formatCurrency, formatDate } from '../engine/formatters'
@@ -37,6 +37,8 @@ function DebtResultRow({ debt, payoffMonth, interest }) {
 }
 
 export default function Dashboard({ onBack }) {
+  useEffect(() => { window.scrollTo(0, 0) }, [])
+
   const debts         = useDebtStore((s) => s.debts)
   const attackOrder   = useDebtStore((s) => s.attackOrder)
   const loanConfig    = useDebtStore((s) => s.loanConfig)
