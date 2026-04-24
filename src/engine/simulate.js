@@ -58,14 +58,21 @@ export function simulate(debts, attackOrder = [], loanConfig = null, monthlyBudg
     if (paidOff[LOAN_ID]) debtPayoffMonths[LOAN_ID] = 0
   }
 
-  // Resolve card attack order, then insert loan by APR (lower rate = lower priority)
+  // Build attack order from user's attackOrder.
+  // LOAN_ID may be included if the user has positioned the loan explicitly.
+  // If not, fall back to APR-based insertion (backward compatible).
   const knownCardIds = debts.map((d) => d.id)
+  const userPositionedLoan = attackOrder.includes(LOAN_ID)
+
   const orderedIds = [
-    ...attackOrder.filter((id) => knownCardIds.includes(id)),
+    ...attackOrder.filter((id) => {
+      if (id === LOAN_ID) return loanIsDebt && !paidOff[LOAN_ID]
+      return knownCardIds.includes(id)
+    }),
     ...knownCardIds.filter((id) => !attackOrder.includes(id)),
   ]
 
-  if (loanIsDebt && !paidOff[LOAN_ID]) {
+  if (loanIsDebt && !paidOff[LOAN_ID] && !userPositionedLoan) {
     const insertAt = orderedIds.findIndex((id) => {
       const d = debts.find((x) => x.id === id)
       return d && toNum(d.annualRate) < loanAnnualRate

@@ -1,5 +1,6 @@
 import useDebtStore from '../store/useDebtStore'
 import { formatCurrency } from '../engine/formatters'
+import { LOAN_ID } from '../engine/simulate'
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
 
@@ -99,42 +100,72 @@ export default function SimulationPanel({ debts }) {
       : [],
   )
 
-  // Active debts in attack order — loan-paid debts are excluded
-  const orderedActiveDebts = [
+  const loanPayment  = loan.enabled ? (parseInt(loan.monthlyPayment, 10) || 0) : 0
+  const loanInList   = loan.enabled && loanPayment > 0 && loanAmount > 0
+
+  // Priority items: active card debts + loan (if active), in attackOrder order
+  const orderedItems = [
     ...attackOrder
-      .map((id) => debts.find((d) => d.id === id))
-      .filter((d) => d && !loanPaidIds.has(d.id)),
-    ...debts.filter((d) => !loanPaidIds.has(d.id) && !attackOrder.includes(d.id)),
+      .map((id) => {
+        if (id === LOAN_ID) return loanInList ? { kind: 'loan', id: LOAN_ID } : null
+        const d = debts.find((x) => x.id === id)
+        return d && !loanPaidIds.has(d.id) ? { kind: 'card', id, debt: d } : null
+      })
+      .filter(Boolean),
+    // Append any active card debts not yet in attackOrder
+    ...debts
+      .filter((d) => !loanPaidIds.has(d.id) && !attackOrder.includes(d.id))
+      .map((d) => ({ kind: 'card', id: d.id, debt: d })),
+    // Append loan if active but not yet in attackOrder
+    ...(loanInList && !attackOrder.includes(LOAN_ID) ? [{ kind: 'loan', id: LOAN_ID }] : []),
   ]
 
-  const budget      = parseFloat(monthlyBudget) || 0
-  const sumMins     = orderedActiveDebts.reduce((s, d) => s + (parseFloat(d.minPayment) || 0), 0)
-  const surplus     = Math.max(0, budget - sumMins)
-  const loanPayment = loan.enabled ? (parseInt(loan.monthlyPayment, 10) || 0) : 0
-  const total       = budget + loanPayment
+  const budget   = parseFloat(monthlyBudget) || 0
+  const sumMins  = orderedItems.reduce((s, item) => {
+    if (item.kind === 'loan') return s  // loan min handled separately in simulation
+    return s + (parseFloat(item.debt.minPayment) || 0)
+  }, 0)
+  const surplus  = Math.max(0, budget - sumMins)
+  const total    = budget + loanPayment
 
-  const moveUp = (debtId) => {
-    const visibleIds = orderedActiveDebts.map((d) => d.id)
-    const visIdx = visibleIds.indexOf(debtId)
+  const visibleIds = orderedItems.map((item) => item.id)
+
+  const moveUp = (itemId) => {
+    const visIdx = visibleIds.indexOf(itemId)
     if (visIdx <= 0) return
     const swapWithId = visibleIds[visIdx - 1]
-    const newOrder = [...attackOrder]
-    const i = newOrder.indexOf(debtId)
-    const j = newOrder.indexOf(swapWithId)
-    ;[newOrder[i], newOrder[j]] = [newOrder[j], newOrder[i]]
-    setAttackOrder(newOrder)
+    // Ensure both IDs are in attackOrder before swapping
+    const base = attackOrder.includes(LOAN_ID) || itemId !== LOAN_ID
+      ? [...attackOrder]
+      : [...attackOrder, LOAN_ID]
+    const i = base.indexOf(itemId)
+    const j = base.indexOf(swapWithId)
+    if (i === -1 || j === -1) return
+    ;[base[i], base[j]] = [base[j], base[i]]
+    setAttackOrder(base)
   }
 
-  const moveDown = (debtId) => {
-    const visibleIds = orderedActiveDebts.map((d) => d.id)
-    const visIdx = visibleIds.indexOf(debtId)
+  const moveDown = (itemId) => {
+    const visIdx = visibleIds.indexOf(itemId)
     if (visIdx === -1 || visIdx >= visibleIds.length - 1) return
     const swapWithId = visibleIds[visIdx + 1]
-    const newOrder = [...attackOrder]
-    const i = newOrder.indexOf(debtId)
-    const j = newOrder.indexOf(swapWithId)
-    ;[newOrder[i], newOrder[j]] = [newOrder[j], newOrder[i]]
-    setAttackOrder(newOrder)
+    const base = attackOrder.includes(LOAN_ID) || itemId !== LOAN_ID
+      ? [...attackOrder]
+      : [...attackOrder, LOAN_ID]
+    const i = base.indexOf(itemId)
+    const j = base.indexOf(swapWithId)
+    if (i === -1 || j === -1) return
+    ;[base[i], base[j]] = [base[j], base[i]]
+    setAttackOrder(base)
+  }
+
+  const handleLoanToggle = (v) => {
+    updateLoan({ enabled: v })
+    if (v && !attackOrder.includes(LOAN_ID)) {
+      setAttackOrder([...attackOrder, LOAN_ID])
+    } else if (!v) {
+      setAttackOrder(attackOrder.filter((id) => id !== LOAN_ID))
+    }
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -152,16 +183,20 @@ export default function SimulationPanel({ debts }) {
         </div>
 
         <div className="space-y-2">
-          {orderedActiveDebts.map((debt, i) => {
-            const colorIdx = debts.indexOf(debt)
-            const color    = COLORS[colorIdx % COLORS.length]
-            const min      = parseFloat(debt.minPayment) || 0
-            const payment  = i === 0 ? min + surplus : min
-            const isTarget = i === 0
+          {orderedItems.map((item, i) => {
+            const isTarget  = i === 0
+            const isLoan    = item.kind === 'loan'
+            const color     = isLoan ? '#6b7280' : COLORS[debts.indexOf(item.debt) % COLORS.length]
+            const min       = isLoan ? loanPayment : (parseFloat(item.debt.minPayment) || 0)
+            const payment   = isTarget ? min + surplus : min
+            const label     = isLoan ? 'Personal Loan' : item.debt.name
+            const sub       = isLoan
+              ? `${formatCurrency(loanAmount)} · ${loan.annualRate || 0}% APR`
+              : `${formatCurrency(parseFloat(item.debt.balance) || 0)} · ${item.debt.annualRate}% APR`
 
             return (
               <div
-                key={debt.id}
+                key={item.id}
                 className={[
                   'flex items-center gap-3 rounded-xl px-3 py-3 border transition-colors',
                   isTarget ? 'border-indigo-200 bg-indigo-50' : 'border-gray-100 bg-gray-50',
@@ -170,7 +205,7 @@ export default function SimulationPanel({ debts }) {
                 {/* Reorder buttons */}
                 <div className="flex flex-col gap-0.5 shrink-0">
                   <button
-                    onClick={() => moveUp(debt.id)}
+                    onClick={() => moveUp(item.id)}
                     disabled={i === 0}
                     className="w-6 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed text-xs leading-none"
                     aria-label="Move up"
@@ -178,8 +213,8 @@ export default function SimulationPanel({ debts }) {
                     ▲
                   </button>
                   <button
-                    onClick={() => moveDown(debt.id)}
-                    disabled={i === orderedActiveDebts.length - 1}
+                    onClick={() => moveDown(item.id)}
+                    disabled={i === orderedItems.length - 1}
                     className="w-6 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed text-xs leading-none"
                     aria-label="Move down"
                   >
@@ -195,12 +230,10 @@ export default function SimulationPanel({ debts }) {
                   {i + 1}
                 </span>
 
-                {/* Debt info */}
+                {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color }}>{debt.name}</p>
-                  <p className="text-xs text-gray-400">
-                    {formatCurrency(parseFloat(debt.balance) || 0)} · {debt.annualRate}% APR
-                  </p>
+                  <p className="text-sm font-semibold truncate" style={{ color }}>{label}</p>
+                  <p className="text-xs text-gray-400">{sub}</p>
                 </div>
 
                 {/* Payment */}
@@ -208,6 +241,8 @@ export default function SimulationPanel({ debts }) {
                   <p className="text-sm font-bold text-gray-800">{formatCurrency(payment)}/mo</p>
                   {isTarget && surplus > 0 ? (
                     <p className="text-xs text-indigo-500">+{formatCurrency(surplus)} extra</p>
+                  ) : isLoan ? (
+                    <p className="text-xs text-gray-400">fixed</p>
                   ) : (
                     <p className="text-xs text-gray-400">minimum</p>
                   )}
@@ -215,17 +250,6 @@ export default function SimulationPanel({ debts }) {
               </div>
             )
           })}
-
-          {/* Loan fixed-payment row */}
-          {loan.enabled && loanPayment > 0 && (
-            <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-              <div>
-                <p className="text-sm font-semibold text-gray-600">Personal Loan</p>
-                <p className="text-xs text-gray-400 mt-0.5">Fixed payment — paid in parallel</p>
-              </div>
-              <span className="text-sm font-bold text-gray-700">{formatCurrency(loanPayment)}/mo</span>
-            </div>
-          )}
         </div>
 
         {/* Total */}
@@ -242,7 +266,7 @@ export default function SimulationPanel({ debts }) {
             <p className="text-sm font-semibold text-gray-800">Personal Loan Simulation</p>
             <p className="text-xs text-gray-400 mt-0.5">Borrow at a lower rate to pay off high-interest debts</p>
           </div>
-          <Toggle enabled={loan.enabled} onChange={(v) => updateLoan({ enabled: v })} />
+          <Toggle enabled={loan.enabled} onChange={handleLoanToggle} />
         </div>
 
         {loan.enabled && (
