@@ -92,8 +92,7 @@ export default function App() {
   setCaptchaPassed(true); // BYPASS
 
   const goToDashboard = () => {
-    const sorted = [...debts].sort((a, b) => parseFloat(b.annualRate) - parseFloat(a.annualRate))
-    setAttackOrder(sorted.map((d) => d.id))
+    // Keep entry order — user sets priority in the simulation panel
     setStep('dashboard')
   }
 

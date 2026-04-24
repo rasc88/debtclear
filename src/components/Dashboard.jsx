@@ -37,17 +37,18 @@ function DebtResultRow({ debt, payoffMonth, interest }) {
 }
 
 export default function Dashboard({ onBack }) {
-  const debts = useDebtStore((s) => s.debts)
-  const attackOrder = useDebtStore((s) => s.attackOrder)
-  const loanConfig = useDebtStore((s) => s.loanConfig)
+  const debts         = useDebtStore((s) => s.debts)
+  const attackOrder   = useDebtStore((s) => s.attackOrder)
+  const loanConfig    = useDebtStore((s) => s.loanConfig)
+  const monthlyBudget = useDebtStore((s) => s.monthlyBudget)
 
   const resultWithout = useMemo(
-    () => simulate(debts, attackOrder, null),
-    [debts, attackOrder],
+    () => simulate(debts, attackOrder, null, monthlyBudget),
+    [debts, attackOrder, monthlyBudget],
   )
   const resultWith = useMemo(
-    () => simulate(debts, attackOrder, loanConfig),
-    [debts, attackOrder, loanConfig],
+    () => simulate(debts, attackOrder, loanConfig, monthlyBudget),
+    [debts, attackOrder, loanConfig, monthlyBudget],
   )
 
   const result = loanConfig.enabled ? resultWith : resultWithout
@@ -134,13 +135,8 @@ export default function Dashboard({ onBack }) {
         />
         <StatCard
           label="Monthly budget"
-          value={formatCurrency(
-            debts
-              .filter((d) => (result.debtPayoffMonths[d.id] ?? 1) !== 0)
-              .reduce((s, d) => s + parseFloat(d.monthlyPayment || 0), 0) +
-            (loanConfig.enabled ? parseFloat(loanConfig.monthlyPayment || 0) : 0)
-          )}
-          sub="across all debts"
+          value={formatCurrency(parseFloat(monthlyBudget) || 0)}
+          sub="toward your debts"
         />
       </div>
 

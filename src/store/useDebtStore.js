@@ -12,6 +12,7 @@ const useDebtStore = create((set, get) => ({
   debts: [],
   attackOrder: [],
   loanConfig: { ...DEFAULT_LOAN },
+  monthlyBudget: '',
   captchaPassed: false,
   step: 'form',
 
@@ -27,6 +28,7 @@ const useDebtStore = create((set, get) => ({
   },
 
   setAttackOrder: (attackOrder) => set({ attackOrder }),
+  setMonthlyBudget: (monthlyBudget) => set({ monthlyBudget }),
 
   // Merge partial fields into loanConfig
   updateLoan: (fields) => set((s) => ({ loanConfig: { ...s.loanConfig, ...fields } })),

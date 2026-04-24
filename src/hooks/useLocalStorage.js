@@ -7,9 +7,11 @@ export function useLocalStorageSync() {
   const debts = useDebtStore((s) => s.debts)
   const attackOrder = useDebtStore((s) => s.attackOrder)
   const loanConfig = useDebtStore((s) => s.loanConfig)
+  const monthlyBudget = useDebtStore((s) => s.monthlyBudget)
   const setDebts = useDebtStore((s) => s.setDebts)
   const setAttackOrder = useDebtStore((s) => s.setAttackOrder)
   const updateLoan = useDebtStore((s) => s.updateLoan)
+  const setMonthlyBudget = useDebtStore((s) => s.setMonthlyBudget)
 
   const loaded = useRef(false)
 
@@ -23,6 +25,7 @@ export function useLocalStorageSync() {
           if (Array.isArray(data.attackOrder)) setAttackOrder(data.attackOrder)
         }
         if (data.loanConfig) updateLoan(data.loanConfig)
+        if (data.monthlyBudget) setMonthlyBudget(data.monthlyBudget)
       }
     } catch {}
     loaded.current = true
@@ -30,6 +33,6 @@ export function useLocalStorageSync() {
 
   useEffect(() => {
     if (!loaded.current) return
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ debts, attackOrder, loanConfig }))
-  }, [debts, attackOrder, loanConfig])
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ debts, attackOrder, loanConfig, monthlyBudget }))
+  }, [debts, attackOrder, loanConfig, monthlyBudget])
 }

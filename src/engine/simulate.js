@@ -13,7 +13,7 @@ export const LOAN_ID = '__loan__'
  * loanConfig: { enabled, amount, annualRate, monthlyPayment,
  *               targets: [{ debtId, amount }] }
  */
-export function simulate(debts, attackOrder = [], loanConfig = null) {
+export function simulate(debts, attackOrder = [], loanConfig = null, monthlyBudget = 0) {
   if (!debts || debts.length === 0) {
     return { timeline: [], debtPayoffMonths: {}, totalInterest: 0, totalMonths: 0 }
   }
@@ -74,10 +74,10 @@ export function simulate(debts, attackOrder = [], loanConfig = null) {
     else orderedIds.splice(insertAt, 0, LOAN_ID)
   }
 
-  // Total budget = payments for cards still active + loan payment.
-  // Debts paid off at month 0 by the lump sum are excluded — their payment slot
-  // is now occupied by the loan payment, not freed as surplus.
-  const cardBudget = debts.reduce((s, d) => paidOff[d.id] ? s : s + toNum(d.monthlyPayment), 0)
+  // Total budget = user's monthly budget for debts + loan payment (if loan is a debt).
+  // The monthly budget is a global commitment, not per-debt — surplus always flows
+  // to the top-priority unpaid debt via avalanche.
+  const cardBudget = toNum(monthlyBudget)
   const totalBudget = cardBudget + (loanIsDebt ? loanMonthlyPayment : 0)
 
   const getMinPayment = (id) => {

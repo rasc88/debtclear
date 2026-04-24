@@ -1,9 +1,7 @@
-import { useCallback } from 'react'
 import useDebtStore from '../store/useDebtStore'
 import { formatCurrency } from '../engine/formatters'
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
-const TRACK_EMPTY = '#e5e7eb' // gray-200 — light theme track
 
 // ── Shared sub-components ────────────────────────────────────────────────────
 
@@ -54,44 +52,18 @@ function LoanField({ label, value, onChange, prefix, suffix, placeholder }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function SimulationPanel({ debts }) {
-  const setDebts    = useDebtStore((s) => s.setDebts)
-  const loan        = useDebtStore((s) => s.loanConfig)
-  const updateLoan  = useDebtStore((s) => s.updateLoan)
-
-  // ── Slider logic ────────────────────────────────────────────────────────────
-
-  const updatePayment = useCallback(
-    (id, raw) => {
-      const value = Math.max(0, parseInt(raw, 10) || 0)
-      setDebts(debts.map((d) => (d.id === id ? { ...d, monthlyPayment: String(value) } : d)))
-    },
-    [debts, setDebts],
-  )
-
-  const colorMap = Object.fromEntries(debts.map((d, i) => [d.id, COLORS[i % COLORS.length]]))
-
-  const loanPaidIds = new Set(
-    loan.enabled
-      ? (loan.targets ?? [])
-          .filter((t) => {
-            const debt = debts.find((d) => d.id === t.debtId)
-            return debt && (parseFloat(t.amount) || 0) >= (parseFloat(debt.balance) || 0)
-          })
-          .map((t) => t.debtId)
-      : [],
-  )
-
-  const activeDebts  = debts.filter((d) => !loanPaidIds.has(d.id))
-  const loanPayment  = loan.enabled ? (parseInt(loan.monthlyPayment, 10) || 0) : 0
-  const cardTotal    = activeDebts.reduce((s, d) => s + (parseInt(d.monthlyPayment, 10) || 0), 0)
-  const total        = cardTotal + loanPayment
+  const monthlyBudget  = useDebtStore((s) => s.monthlyBudget)
+  const attackOrder    = useDebtStore((s) => s.attackOrder)
+  const setAttackOrder = useDebtStore((s) => s.setAttackOrder)
+  const loan           = useDebtStore((s) => s.loanConfig)
+  const updateLoan     = useDebtStore((s) => s.updateLoan)
 
   // ── Loan logic ──────────────────────────────────────────────────────────────
 
-  const loanAmount      = parseFloat(loan.amount) || 0
-  const targets         = loan.targets ?? []
-  const totalAllocated  = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0)
-  const remaining       = loanAmount - totalAllocated
+  const loanAmount     = parseFloat(loan.amount) || 0
+  const targets        = loan.targets ?? []
+  const totalAllocated = targets.reduce((s, t) => s + (parseFloat(t.amount) || 0), 0)
+  const remaining      = loanAmount - totalAllocated
   const isOverAllocated = totalAllocated > loanAmount + 0.01
 
   const getTarget = (debtId) => targets.find((t) => t.debtId === debtId)
@@ -114,63 +86,131 @@ export default function SimulationPanel({ debts }) {
     else updateLoan({ targets: [...targets, { debtId, amount: String(bal) }] })
   }
 
+  // ── Priority list logic ──────────────────────────────────────────────────────
+
+  const loanPaidIds = new Set(
+    loan.enabled
+      ? targets
+          .filter((t) => {
+            const debt = debts.find((d) => d.id === t.debtId)
+            return debt && (parseFloat(t.amount) || 0) >= (parseFloat(debt.balance) || 0)
+          })
+          .map((t) => t.debtId)
+      : [],
+  )
+
+  // Active debts in attack order — loan-paid debts are excluded
+  const orderedActiveDebts = [
+    ...attackOrder
+      .map((id) => debts.find((d) => d.id === id))
+      .filter((d) => d && !loanPaidIds.has(d.id)),
+    ...debts.filter((d) => !loanPaidIds.has(d.id) && !attackOrder.includes(d.id)),
+  ]
+
+  const budget      = parseFloat(monthlyBudget) || 0
+  const sumMins     = orderedActiveDebts.reduce((s, d) => s + (parseFloat(d.minPayment) || 0), 0)
+  const surplus     = Math.max(0, budget - sumMins)
+  const loanPayment = loan.enabled ? (parseInt(loan.monthlyPayment, 10) || 0) : 0
+  const total       = budget + loanPayment
+
+  const moveUp = (debtId) => {
+    const visibleIds = orderedActiveDebts.map((d) => d.id)
+    const visIdx = visibleIds.indexOf(debtId)
+    if (visIdx <= 0) return
+    const swapWithId = visibleIds[visIdx - 1]
+    const newOrder = [...attackOrder]
+    const i = newOrder.indexOf(debtId)
+    const j = newOrder.indexOf(swapWithId)
+    ;[newOrder[i], newOrder[j]] = [newOrder[j], newOrder[i]]
+    setAttackOrder(newOrder)
+  }
+
+  const moveDown = (debtId) => {
+    const visibleIds = orderedActiveDebts.map((d) => d.id)
+    const visIdx = visibleIds.indexOf(debtId)
+    if (visIdx === -1 || visIdx >= visibleIds.length - 1) return
+    const swapWithId = visibleIds[visIdx + 1]
+    const newOrder = [...attackOrder]
+    const i = newOrder.indexOf(debtId)
+    const j = newOrder.indexOf(swapWithId)
+    ;[newOrder[i], newOrder[j]] = [newOrder[j], newOrder[i]]
+    setAttackOrder(newOrder)
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-4">
 
-      {/* ── Section 1: Monthly payments ── */}
+      {/* ── Section 1: Payment priority ── */}
       <div className="px-5 pt-5 pb-4">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
-          Monthly payments
-        </p>
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Payment Priority</p>
+          <p className="text-xs text-gray-400 mt-1">
+            Debt #1 gets all surplus. Use ▲▼ to reorder — highest APR first saves the most interest.
+          </p>
+        </div>
 
-        <div className="space-y-5">
-          {activeDebts.map((debt) => {
-            const color    = colorMap[debt.id]
-            const payment  = parseInt(debt.monthlyPayment, 10) || 0
-            const balance  = parseFloat(debt.balance) || 0
-            const rate     = parseFloat(debt.annualRate) || 0
-            const interest = Math.ceil(balance * (rate / 100 / 12))
-            const min      = Math.max(Math.floor(parseFloat(debt.minPayment) || 0), interest + 1)
-            const max      = Math.max(Math.ceil(balance / 50) * 50, payment, min, 100)
-            const pct      = max > min ? ((payment - min) / (max - min)) * 100 : 0
+        <div className="space-y-2">
+          {orderedActiveDebts.map((debt, i) => {
+            const colorIdx = debts.indexOf(debt)
+            const color    = COLORS[colorIdx % COLORS.length]
+            const min      = parseFloat(debt.minPayment) || 0
+            const payment  = i === 0 ? min + surplus : min
+            const isTarget = i === 0
 
             return (
-              <div key={debt.id}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold" style={{ color }}>{debt.name}</span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-gray-400 text-sm">$</span>
-                    <input
-                      type="number"
-                      value={payment}
-                      min={min}
-                      max={max}
-                      onChange={(e) => updatePayment(debt.id, e.target.value)}
-                      className="w-20 border border-gray-200 text-gray-800 text-sm font-bold text-center rounded-lg py-1 px-2 focus:outline-none focus:ring-1"
-                      style={{ '--tw-ring-color': color }}
-                    />
-                  </div>
+              <div
+                key={debt.id}
+                className={[
+                  'flex items-center gap-3 rounded-xl px-3 py-3 border transition-colors',
+                  isTarget ? 'border-indigo-200 bg-indigo-50' : 'border-gray-100 bg-gray-50',
+                ].join(' ')}
+              >
+                {/* Reorder buttons */}
+                <div className="flex flex-col gap-0.5 shrink-0">
+                  <button
+                    onClick={() => moveUp(debt.id)}
+                    disabled={i === 0}
+                    className="w-6 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed text-xs leading-none"
+                    aria-label="Move up"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    onClick={() => moveDown(debt.id)}
+                    disabled={i === orderedActiveDebts.length - 1}
+                    className="w-6 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700 disabled:opacity-20 disabled:cursor-not-allowed text-xs leading-none"
+                    aria-label="Move down"
+                  >
+                    ▼
+                  </button>
                 </div>
 
-                <input
-                  type="range"
-                  min={min}
-                  max={max}
-                  step={10}
-                  value={payment}
-                  onChange={(e) => updatePayment(debt.id, e.target.value)}
-                  className="w-full"
-                  style={{
-                    '--slider-color': color,
-                    background: `linear-gradient(to right, ${color} ${pct}%, ${TRACK_EMPTY} ${pct}%)`,
-                  }}
-                />
+                {/* Priority badge */}
+                <span
+                  className="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                  style={{ background: color }}
+                >
+                  {i + 1}
+                </span>
 
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
-                  <span>${min.toLocaleString()}</span>
-                  <span>${max.toLocaleString()}</span>
+                {/* Debt info */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color }}>{debt.name}</p>
+                  <p className="text-xs text-gray-400">
+                    {formatCurrency(parseFloat(debt.balance) || 0)} · {debt.annualRate}% APR
+                  </p>
+                </div>
+
+                {/* Payment */}
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-bold text-gray-800">{formatCurrency(payment)}/mo</p>
+                  {isTarget && surplus > 0 ? (
+                    <p className="text-xs text-indigo-500">+{formatCurrency(surplus)} extra</p>
+                  ) : (
+                    <p className="text-xs text-gray-400">minimum</p>
+                  )}
                 </div>
               </div>
             )
@@ -190,14 +230,13 @@ export default function SimulationPanel({ debts }) {
 
         {/* Total */}
         <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
-          <span className="text-sm text-gray-500">Total monthly budget</span>
+          <span className="text-sm text-gray-500">Total monthly outflow</span>
           <span className="text-xl font-bold text-gray-800">{formatCurrency(total)}</span>
         </div>
       </div>
 
       {/* ── Section 2: Personal loan simulator ── */}
       <div className="border-t border-gray-100">
-        {/* Toggle header */}
         <div className="flex items-center justify-between px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-gray-800">Personal Loan Simulation</p>
@@ -206,17 +245,14 @@ export default function SimulationPanel({ debts }) {
           <Toggle enabled={loan.enabled} onChange={(v) => updateLoan({ enabled: v })} />
         </div>
 
-        {/* Expanded fields */}
         {loan.enabled && (
           <div className="px-5 pb-5 space-y-4">
-            {/* Loan terms */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <LoanField label="Loan amount"             value={loan.amount}        onChange={(v) => updateLoan({ amount: v })}         prefix="$" placeholder="e.g. 5000" />
-              <LoanField label="Annual interest rate"    value={loan.annualRate}    onChange={(v) => updateLoan({ annualRate: v })}     suffix="%" placeholder="0 for interest-free" />
-              <LoanField label="Monthly payment to lender" value={loan.monthlyPayment} onChange={(v) => updateLoan({ monthlyPayment: v })} prefix="$" placeholder="e.g. 200" />
+              <LoanField label="Loan amount"               value={loan.amount}         onChange={(v) => updateLoan({ amount: v })}          prefix="$" placeholder="e.g. 5000" />
+              <LoanField label="Annual interest rate"      value={loan.annualRate}     onChange={(v) => updateLoan({ annualRate: v })}      suffix="%" placeholder="0 for interest-free" />
+              <LoanField label="Monthly payment to lender" value={loan.monthlyPayment} onChange={(v) => updateLoan({ monthlyPayment: v })}  prefix="$" placeholder="e.g. 200" />
             </div>
 
-            {/* Debt allocation */}
             {loanAmount > 0 && (
               <>
                 <div>
@@ -274,7 +310,6 @@ export default function SimulationPanel({ debts }) {
                   </div>
                 </div>
 
-                {/* Allocation summary */}
                 <div className={[
                   'rounded-xl px-4 py-3 flex items-center justify-between text-sm',
                   isOverAllocated ? 'bg-red-50 border border-red-200' : 'bg-gray-50 border border-gray-200',
